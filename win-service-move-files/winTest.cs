@@ -41,7 +41,7 @@ namespace win_service_move_files
             {
                 flag = true;
 
-                //EventLog.WriteEntry("Copy to Input Folder.", EventLogEntryType.Information);
+                EventLog.WriteEntry("Copy to Input Folder.", EventLogEntryType.Information);
 
                 string InputPath = ConfigurationManager.AppSettings["InputPath"].ToString();
                 string ProcessPath = ConfigurationManager.AppSettings["ProcessPath"].ToString();
@@ -60,20 +60,24 @@ namespace win_service_move_files
                         File.Delete(PrPath + file.Name);
                     }
 
-                    File.Copy(InPath + file.Name, PrPath + file.Name);
+                    //File.Copy(InPath + file.Name, PrPath + file.Name);
+                    File.Move(InPath + file.Name, PrPath + file.Name);
                     File.SetAttributes(PrPath + file.Name, FileAttributes.Normal);
+                    File.Delete(InPath + file.Name);
                     
-                    if(File.Exists(PrPath + file.Name))
+
+                    if (File.Exists(PrPath + file.Name))
                     {
                         EventLog.WriteEntry("File copied successful.", EventLogEntryType.Information);
                     }
                     else
                     {
-                        EventLog.WriteEntry("File copy in process", EventLogEntryType.Information);
+                        EventLog.WriteEntry("File can't copy.", EventLogEntryType.Information);
                     }
                 }
 
                 EventLog.WriteEntry("Copying process completed");
+                //Método que lea el txt
 
             }
             catch(Exception ex)
@@ -81,5 +85,7 @@ namespace win_service_move_files
                 EventLog.WriteEntry(ex.Message,EventLogEntryType.Error);
             }
         }
+
+        public 
     }
 }
