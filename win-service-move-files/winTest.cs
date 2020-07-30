@@ -35,6 +35,8 @@ namespace win_service_move_files
 
         private void tmrWin_Elapsed(object sender, System.Timers.ElapsedEventArgs e)
         {
+            string conn = ConfigurationManager.ConnectionStrings["DbConnect"].ConnectionString;
+
             if (flag)
             {
                 return;
@@ -43,7 +45,7 @@ namespace win_service_move_files
             {
                 flag = true;
 
-                EventLog.WriteEntry("Copy to Input Folder.", EventLogEntryType.Information);
+                General.LogActions("Starting with file paths.");
 
                 string InputPath = ConfigurationManager.AppSettings["InputPath"].ToString();
                 string ProcessPath = ConfigurationManager.AppSettings["ProcessPath"].ToString();
@@ -60,90 +62,96 @@ namespace win_service_move_files
                     {
                         File.SetAttributes(PrPath + file.Name, FileAttributes.Normal);
                         File.Delete(PrPath + file.Name);
+                        General.LogActions("File exists in destination path so, we need to delete it.");
                     }
 
+                    General.LogActions("Copying file.");
                     //File.Copy(InPath + file.Name, PrPath + file.Name);
                     File.Move(InPath + file.Name, PrPath + file.Name);
                     File.SetAttributes(PrPath + file.Name, FileAttributes.Normal);
+                    General.LogActions("File copied.");
                     File.Delete(InPath + file.Name);
+                    General.LogActions("File deleted from origin path.");
 
                     if (File.Exists(PrPath + file.Name))
                     {
-                        EventLog.WriteEntry("File copied successful.", EventLogEntryType.Information);
+                        General.LogActions("File copy successful.");
                     }
                     else
                     {
-                        EventLog.WriteEntry("File can't copy.", EventLogEntryType.Information);
+                        General.LogActions("Error in process. Can't copy file.");
                     }
                 }
-
-                EventLog.WriteEntry("Copying process completed");
 
                 foreach (var file in PrPath.GetFiles("*", SearchOption.AllDirectories))
                 {
                     if (File.Exists(PrPath + file.Name))
                     {
                         string fileName = @PrPath + file.Name;
-                        InsertData(fileName);
-                        MoveToProcess(PrPath + file.Name, OuPath + file.Name);//enviar ruta destino
+                        General.LogActions("Starting process to insert data.");
+                        InsertData(fileName, conn);
+                        General.LogActions("Process finished successfully. Now starting to move file to process folder.");
+                        MoveToProcess(PrPath + file.Name, OuPath + file.Name);
+                        General.LogActions("Moving file to process folder successfully.");
                     }
                 }
             }
             catch (Exception ex)
             {
-                EventLog.WriteEntry(ex.Message, EventLogEntryType.Error);
+                General.LogExeption(ex);
             }
         }
 
         #region InsertData
-        private void InsertData(string fileName)
+        private void InsertData(string fileName, string conn)
         {
-            DataTable dataInput = new DataTable();
-            /*
-            DataColumn column = new DataColumn();
-            column.DataType = System.Type.GetType("System.Int32");
-            column.ColumnName = "Id";
-            column.AutoIncrement = true;
-            column.AutoIncrementSeed = 1;
-            column.AutoIncrementStep = 1;
-            dataInput.Columns.Add(column);
-            */
-            dataInput.Columns.AddRange(new DataColumn[4]
+            try
             {
-                new DataColumn("Month_Countable",typeof(int)),
-                new DataColumn("Client_RUT", typeof(string)),
-                new DataColumn("Trx_Count", typeof(string)),
-                new DataColumn("Service_Code", typeof(string))
-            });
-            
-            string lines = File.ReadAllText(fileName);
-
-            foreach(string row in lines.Split('\r','\n'))
-            {
-                if (!string.IsNullOrEmpty(row))
+                DataTable dataInput = new DataTable();
+                dataInput.Columns.AddRange(new DataColumn[4]
                 {
-                    dataInput.Rows.Add();
-                    int i = 0;
-                    foreach(string cell in row.Split(';'))
+                    new DataColumn("Month_Countable",typeof(int)),
+                    new DataColumn("Client_RUT", typeof(string)),
+                    new DataColumn("Trx_Count", typeof(string)),
+                    new DataColumn("Service_Code", typeof(string))
+                });
+
+                string lines = File.ReadAllText(fileName);
+
+                General.LogActions("File.");
+
+                foreach (string row in lines.Split('\r', '\n'))
+                {
+                    if (!string.IsNullOrEmpty(row))
                     {
-                        dataInput.Rows[dataInput.Rows.Count - 1][i] = cell.Trim();
-                        i++;
+                        dataInput.Rows.Add();
+                        int i = 0;
+                        foreach (string cell in row.Split(';'))
+                        {
+                            dataInput.Rows[dataInput.Rows.Count - 1][i] = cell.Trim();
+                            i++;
+                        }
+                    }
+                }
+
+                using (SqlConnection sql = new SqlConnection(conn))
+                {
+                    using (SqlBulkCopy sqlBC = new SqlBulkCopy(sql))
+                    {
+                        sqlBC.DestinationTableName = "dbo.tbl_Interface";
+                        sql.Open();
+                        sqlBC.WriteToServer(dataInput);
+                        sql.Close();
                     }
                 }
             }
-
-            string conn = ConfigurationManager.ConnectionStrings["DbConnect"].ConnectionString;
-            using(SqlConnection sql = new SqlConnection(conn))
+            catch(Exception ex)
             {
-                using(SqlBulkCopy sqlBC = new SqlBulkCopy(sql))
-                {
-                    sqlBC.DestinationTableName = "dbo.tbl_Interface";
-                    sql.Open();
-                    sqlBC.WriteToServer(dataInput);
-                    sql.Close();
-                }
+                General.LogExeption(ex);
             }
         }
+
+
         #endregion
 
         #region MoveToProcessed
@@ -155,7 +163,6 @@ namespace win_service_move_files
                  File.Delete(destinationPath);
              }
 
-             //File.Copy(InPath + file.Name, PrPath + file.Name);
              File.Move(originPath, destinationPath);
              File.SetAttributes(destinationPath, FileAttributes.Normal);
              File.Delete(originPath);
